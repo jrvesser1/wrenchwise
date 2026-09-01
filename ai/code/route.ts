@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
     const { data: docs, error: docsError } = await sb
       .from("repair_sources")
-      .select("title,url,source_type,content")
+      .select("title, url, source_type, content")
       .eq("vehicle_key", vehicle?.key || "")
       .limit(20);
 
@@ -46,25 +46,21 @@ export async function POST(req: Request) {
     const response = await client.messages.create({
       model: "claude-3-5-haiku-latest",
       max_tokens: 900,
-
       system: `
 You are a research assistant, not a mechanic.
 
-Explain an OBD diagnostic code using reliable supplied source material when available.
+Explain an OBD diagnostic code using only reliable supplied source material when available.
 
-Rules:
-- Never invent repair procedures.
-- Never claim a manufacturer procedure, TSB, recall, specification, or confirmed fix unless the supplied sources support it.
-- Clearly identify information that is missing or uncertain.
-- Prefer supplied repair_sources over unsupported general knowledge.
-- Include safety considerations when appropriate.
-- Return valid JSON with exactly these keys:
-  meaning,
-  diagnostic_steps,
-  safety_notes,
-  source_gaps
-`,
+Never claim a manufacturer procedure, TSB, recall, specification, repair procedure, or fix unless the supplied sources support it.
 
+Clearly identify missing information.
+
+Return the answer as JSON with these keys:
+- meaning
+- diagnostic_steps
+- safety_notes
+- source_gaps
+      `.trim(),
       messages: [
         {
           role: "user",
@@ -77,16 +73,13 @@ Rules:
       ],
     });
 
-    const text = response.content
-      .map((block) => {
-        if (block.type === "text") {
-          return block.text;
-        }
+    let text = "";
 
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n");
+    for (const block of response.content) {
+      if (block.type === "text") {
+        text += block.text;
+      }
+    }
 
     return NextResponse.json({ text });
   } catch (error: unknown) {
