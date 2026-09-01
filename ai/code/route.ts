@@ -39,33 +39,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const client = new Anthropic({
-      apiKey,
-    });
+    const client = new Anthropic({ apiKey });
 
     const response = await client.messages.create({
       model: "claude-3-5-haiku-latest",
       max_tokens: 900,
-
-      system: `
-You are a research assistant, not a mechanic.
-
-Explain an OBD diagnostic code using only reliable supplied source material when available.
-
-Never claim a manufacturer procedure, TSB, recall, specification, diagnosis, or repair unless the supplied sources support it.
-
-If the supplied sources do not contain enough information, clearly say that the information is missing.
-
-Return valid JSON with exactly these keys:
-
-{
-  "meaning": "...",
-  "diagnostic_steps": [],
-  "safety_notes": [],
-  "source_gaps": []
-}
-      `,
-
+      system:
+        "You are a research assistant, not a mechanic. Explain an OBD code using only reliable supplied source material when available. Never claim a manufacturer procedure, TSB, recall, specification, or fix unless the supplied sources support it. Clearly label missing information. Return JSON with keys meaning, diagnostic_steps, safety_notes, source_gaps.",
       messages: [
         {
           role: "user",
@@ -78,22 +58,15 @@ Return valid JSON with exactly these keys:
       ],
     });
 
-    let text = "";
+    const text = response.content
+      .filter((block) => block.type === "text")
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("\n");
 
-    for (const block of response.content) {
-      if (block.type === "text") {
-        text += block.text;
-      }
-    }
-
-    return NextResponse.json({
-      text,
-    });
+    return NextResponse.json({ text });
   } catch (error: unknown) {
     const message =
-      error instanceof Error
-        ? error.message
-        : "AI request failed";
+      error instanceof Error ? error.message : "AI request failed";
 
     return NextResponse.json(
       { error: message },
