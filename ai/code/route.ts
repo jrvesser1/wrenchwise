@@ -14,7 +14,13 @@ export async function POST(req:Request){
       system:`You are a research assistant, not a mechanic. Explain an OBD code using only reliable supplied source material when available. Never claim a manufacturer procedure, TSB, recall, specification, or fix unless the supplied sources support it. Clearly label missing information. Return JSON with keys meaning, diagnostic_steps, safety_notes, source_gaps.`,
       messages:[{role:"user",content:JSON.stringify({code,vehicle,sources:docs||[]})}]
     });
-    const t=r.content.find((x:any)=>x.type==="text")?.text||"";
-    return NextResponse.json({text:t});
+ const text = r.content
+  .filter(
+    (x): x is { type: "text"; text: string } => x.type === "text"
+  )
+  .map((x) => x.text)
+  .join("\n");
+
+return NextResponse.json({ text });
   }catch(e:any){return NextResponse.json({error:e.message||"AI request failed"},{status:500});}
 }
