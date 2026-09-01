@@ -4,7 +4,6 @@ import { requireUser, supabaseAdmin } from "@/lib/server";
 
 export async function POST(req: Request) {
   try {
-    // Make sure the user is authenticated
     await requireUser(req);
 
     const { code, vehicle } = await req.json();
@@ -16,7 +15,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Get repair source material from Supabase
     const sb = supabaseAdmin();
 
     const { data: docs, error: docsError } = await sb
@@ -26,15 +24,25 @@ export async function POST(req: Request) {
       .limit(20);
 
     if (docsError) {
-      console.error("Supabase repair_sources error:", docsError);
+      return NextResponse.json(
+        { error: docsError.message },
+        { status: 500 }
+      );
     }
 
-    // Create Anthropic client
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "ANTHROPIC_API_KEY is not configured" },
+        { status: 500 }
+      );
+    }
+
     const client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
+      apiKey,
     });
 
-    // Ask Claude to analyze the diagnostic code
     const response = await client.messages.create({
       model: "claude-3-5-haiku-latest",
       max_tokens: 900,
@@ -42,20 +50,21 @@ export async function POST(req: Request) {
       system: `
 You are a research assistant, not a mechanic.
 
-Explain an OBD diagnostic trouble code using the supplied source material whenever available.
+Explain an OBD diagnostic code using only reliable supplied source material when available.
 
-Rules:
-- Do not invent facts.
-- Do not claim a manufacturer procedure, TSB, recall, specification, repair procedure, or fix unless the supplied sources support it.
-- Clearly identify information that is missing or uncertain.
-- Include practical diagnostic steps only when they are supported by the available information.
-- Include appropriate safety notes.
-- Return a clear JSON object with these keys:
-  meaning
-  diagnostic_steps
-  safety_notes
-  source_gaps
-      `.trim(),
+Never claim a manufacturer procedure, TSB, recall, specification, diagnosis, or repair unless the supplied sources support it.
+
+If the supplied sources do not contain enough information, clearly say that the information is missing.
+
+Return valid JSON with exactly these keys:
+
+{
+  "meaning": "...",
+  "diagnostic_steps": [],
+  "safety_notes": [],
+  "source_gaps": []
+}
+      `,
 
       messages: [
         {
@@ -69,32 +78,26 @@ Rules:
       ],
     });
 
-    // Extract text from Anthropic's response.
-    // This avoids the TypeScript type-predicate error
-    // caused by the SDK's TextBlock type.
-    const text = response.content
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("\n");
+    let text = "";
+
+    for (const block of response.content) {
+      if (block.type === "text") {
+        text += block.text;
+      }
+    }
 
     return NextResponse.json({
       text,
     });
   } catch (error: unknown) {
-    console.error("AI request failed:", error);
-
     const message =
       error instanceof Error
         ? error.message
         : "AI request failed";
 
     return NextResponse.json(
-      {
-        error: message,
-      },
-      {
-        status: 500,
-      }
+      { error: message },
+      { status: 500 }
     );
   }
 }
